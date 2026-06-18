@@ -1,0 +1,158 @@
+package telegram
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"time"
+
+	"github.com/carlosbelchior/green365-telegram/green365"
+)
+
+const telegramAPI = "https://api.telegram.org/bot%s"
+
+type Bot struct {
+	Token      string
+	ChatID     string
+	HTTPClient *http.Client
+}
+
+func NewBot(token, chatID string) *Bot {
+	return &Bot{
+		Token:  token,
+		ChatID: chatID,
+		HTTPClient: &http.Client{
+			Timeout: 10 * time.Second,
+		},
+	}
+}
+
+type InlineKeyboardButton struct {
+	Text string `json:"text"`
+	URL  string `json:"url,omitempty"`
+}
+
+type InlineKeyboardMarkup struct {
+	InlineKeyboard [][]InlineKeyboardButton `json:"inline_keyboard"`
+}
+
+type sendMessageRequest struct {
+	ChatID      string               `json:"chat_id"`
+	Text        string               `json:"text"`
+	ParseMode   string               `json:"parse_mode"`
+	ReplyMarkup *InlineKeyboardMarkup `json:"reply_markup,omitempty"`
+}
+
+type editMessageRequest struct {
+	ChatID      string               `json:"chat_id"`
+	MessageID   int                  `json:"message_id"`
+	Text        string               `json:"text"`
+	ParseMode   string               `json:"parse_mode"`
+	ReplyMarkup *InlineKeyboardMarkup `json:"reply_markup,omitempty"`
+}
+
+type telegramResponse struct {
+	Ok     bool `json:"ok"`
+	Result struct {
+		MessageID int `json:"message_id"`
+	} `json:"result"`
+	Description string `json:"description"`
+}
+
+func FormatMessage(opp green365.Opportunity) string {
+	text := fmt.Sprintf("🔵 Ao vivo\n\n")
+	text += fmt.Sprintf("📈 *%s - @%.2f*\n\n", opp.TargetLine.Name, opp.TargetLine.Odd)
+	text += fmt.Sprintf("🏃 *%s* vs *%s*\n\n", opp.Home, opp.Away)
+
+	if opp.Status == "finished" && opp.ResultStatus != nil {
+		if *opp.ResultStatus == "win" {
+			unit := 0.0
+			if opp.Unit != nil {
+				unit = *opp.Unit
+			}
+			text += fmt.Sprintf("🏆 Resultado: +%.2fu ✅\n\n", unit)
+		} else if *opp.ResultStatus == "lose" {
+			unit := 0.0
+			if opp.Unit != nil {
+				unit = *opp.Unit
+			}
+			text += fmt.Sprintf("❌ Resultado: %.2fu\n\n", unit)
+		}
+	}
+
+	text += "JOGUE COM RESPONSABILIDADE +18"
+	return text
+}
+
+func (b *Bot) getReplyMarkup(url string) *InlineKeyboardMarkup {
+	if url == "" {
+		return nil
+	}
+	return &InlineKeyboardMarkup{
+		InlineKeyboard: [][]InlineKeyboardButton{
+			{
+				{Text: "🔗 Ir para o jogo", URL: url},
+			},
+		},
+	}
+}
+
+func (b *Bot) SendMessage(opp green365.Opportunity) (int, error) {
+	url := fmt.Sprintf(telegramAPI+"/sendMessage", b.Token)
+
+	reqBody := sendMessageRequest{
+		ChatID:      b.ChatID,
+		Text:        FormatMessage(opp),
+		ParseMode:   "Markdown",
+		ReplyMarkup: b.getReplyMarkup(opp.TargetLine.SportsBookRedirectURL),
+	}
+
+	bodyData, _ := json.Marshal(reqBody)
+	resp, err := b.HTTPClient.Post(url, "application/json", bytes.NewBuffer(bodyData))
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+
+	var tResp telegramResponse
+	if err := json.NewDecoder(resp.Body).Decode(&tResp); err != nil {
+		return 0, err
+	}
+
+	if !tResp.Ok {
+		return 0, fmt.Errorf("erro no telegram: %s", tResp.Description)
+	}
+
+	return tResp.Result.MessageID, nil
+}
+
+func (b *Bot) EditMessage(messageID int, opp green365.Opportunity) error {
+	url := fmt.Sprintf(telegramAPI+"/editMessageText", b.Token)
+
+	reqBody := editMessageRequest{
+		ChatID:      b.ChatID,
+		MessageID:   messageID,
+		Text:        FormatMessage(opp),
+		ParseMode:   "Markdown",
+		ReplyMarkup: b.getReplyMarkup(opp.TargetLine.SportsBookRedirectURL),
+	}
+
+	bodyData, _ := json.Marshal(reqBody)
+	resp, err := b.HTTPClient.Post(url, "application/json", bytes.NewBuffer(bodyData))
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	var tResp telegramResponse
+	if err := json.NewDecoder(resp.Body).Decode(&tResp); err != nil {
+		return err
+	}
+
+	if !tResp.Ok {
+		return fmt.Errorf("erro ao editar telegram: %s", tResp.Description)
+	}
+
+	return nil
+}
