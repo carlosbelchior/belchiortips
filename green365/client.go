@@ -95,6 +95,7 @@ type Opportunity struct {
 	Unit         *float64   `json:"unit"`
 	Market       string     `json:"market"`
 	TargetLine   TargetLine `json:"targetLine"`
+	CreatedAt    time.Time  `json:"createdAt"`
 }
 
 type getOpportunitiesResponse struct {
@@ -120,7 +121,7 @@ func (c *Client) GetOpportunities(botID int, limit int) ([]Opportunity, error) {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode == http.StatusUnauthorized {
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
 		return nil, fmt.Errorf("unauthorized") // Needs re-login
 	}
 	

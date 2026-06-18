@@ -77,6 +77,11 @@ func main() {
 			if !exists {
 				// Nova oportunidade
 				if opp.Status == "pending" {
+					if time.Since(opp.CreatedAt) > 8*time.Minute {
+						log.Printf("Ignorando entrada (ID: %d): criada há %v (> 8min)", opp.ID, time.Since(opp.CreatedAt).Round(time.Second))
+						trk.SaveMessageID(opp.ID, 0, currentCombinedStatus)
+						continue
+					}
 					log.Printf("Nova entrada pendente detectada (ID: %d): %s vs %s", opp.ID, opp.Home, opp.Away)
 					newMsgID, err := tBot.SendMessage(opp)
 					if err != nil {
@@ -92,9 +97,13 @@ func main() {
 				if currentCombinedStatus != lastCombinedStatus {
 					// Status mudou
 					log.Printf("Atualizando entrada (ID: %d): mudou de %s para %s", opp.ID, lastCombinedStatus, currentCombinedStatus)
-					err := tBot.EditMessage(msgID, opp)
-					if err != nil {
-						log.Printf("Erro ao editar mensagem no Telegram: %v", err)
+					if msgID != 0 {
+						err := tBot.EditMessage(msgID, opp)
+						if err != nil {
+							log.Printf("Erro ao editar mensagem no Telegram: %v", err)
+						} else {
+							trk.UpdateStatus(opp.ID, currentCombinedStatus)
+						}
 					} else {
 						trk.UpdateStatus(opp.ID, currentCombinedStatus)
 					}
