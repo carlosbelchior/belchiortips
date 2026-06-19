@@ -86,6 +86,7 @@ func main() {
 					newMsgID, err := tBot.SendMessage(opp)
 					if err != nil {
 						log.Printf("Erro ao enviar mensagem para Telegram: %v", err)
+						trk.SaveMessageID(opp.ID, 0, currentCombinedStatus)
 					} else {
 						trk.SaveMessageID(opp.ID, newMsgID, currentCombinedStatus)
 					}

@@ -23,7 +23,7 @@ func NewBot(token, chatID string) *Bot {
 		Token:  token,
 		ChatID: chatID,
 		HTTPClient: &http.Client{
-			Timeout: 10 * time.Second,
+			Timeout: 30 * time.Second,
 		},
 	}
 }
