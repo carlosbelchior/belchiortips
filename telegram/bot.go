@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/carlosbelchior/green365-telegram/green365"
@@ -60,10 +61,28 @@ type telegramResponse struct {
 	Description string `json:"description"`
 }
 
+func getFlag(teamName string) string {
+	baseName := teamName
+	if idx := strings.Index(teamName, " ("); idx != -1 {
+		baseName = teamName[:idx]
+	}
+	// Normalizar minúsculas
+	baseName = strings.TrimSpace(strings.ToLower(baseName))
+
+	if flag, ok := countryFlags[baseName]; ok {
+		return flag + " " + teamName
+	}
+	return teamName
+}
+
 func FormatMessage(opp green365.Opportunity) string {
 	text := fmt.Sprintf("🔵 Ao vivo\n\n")
 	text += fmt.Sprintf("📈 *%s - @%.2f*\n\n", opp.TargetLine.Name, opp.TargetLine.Odd)
-	text += fmt.Sprintf("🏃 *%s* vs *%s*\n\n", opp.Home, opp.Away)
+	
+	homeStr := getFlag(opp.Home)
+	awayStr := getFlag(opp.Away)
+	
+	text += fmt.Sprintf("🏃 *%s* vs *%s*\n\n", homeStr, awayStr)
 
 	if opp.Status == "finished" && opp.ResultStatus != nil {
 		if *opp.ResultStatus == "win" {
