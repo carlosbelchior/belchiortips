@@ -4,14 +4,13 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"strconv"
 	"time"
 
+	"github.com/carlosbelchior/green365-telegram/config"
 	"github.com/carlosbelchior/green365-telegram/green365"
 	"github.com/carlosbelchior/green365-telegram/telegram"
 	"github.com/carlosbelchior/green365-telegram/tracker"
 	"github.com/carlosbelchior/green365-telegram/validator"
-	"github.com/joho/godotenv"
 )
 
 const (
@@ -79,39 +78,28 @@ func main() {
 	log.SetFlags(0)
 	log.SetOutput(&customLogWriter{out: os.Stdout})
 
-	// Carrega variaveis do .env se existir
-	_ = godotenv.Load()
+	// Carrega variaveis do .env se existir, com fallbacks configurados
+	config.Load()
 
-	email := os.Getenv("GREEN365_EMAIL")
-	password := os.Getenv("GREEN365_PASSWORD")
-	telegramToken := os.Getenv("TELEGRAM_BOT_TOKEN")
-	telegramChatID := os.Getenv("TELEGRAM_CHAT_ID")
-	
-	if email == "" || password == "" || telegramToken == "" || telegramChatID == "" {
+	if config.App.Green365Email == "" || config.App.Green365Password == "" || config.App.TelegramBotToken == "" || config.App.TelegramChatID == "" {
 		log.Fatal(colorRed + "Variáveis de ambiente incompletas (GREEN365_EMAIL, GREEN365_PASSWORD, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID)" + colorReset)
 	}
 
-	botIDStr := os.Getenv("BOT_ID")
-	botID := 38974
-	if botIDStr != "" {
-		if id, err := strconv.Atoi(botIDStr); err == nil {
-			botID = id
-		}
-	}
+	botID := config.App.Green365BotID
 
 	log.Println(colorCyan + "Iniciando bot..." + colorReset)
 
 	gClient := green365.NewClient()
-	err := gClient.Login(email, password)
+	err := gClient.Login(config.App.Green365Email, config.App.Green365Password)
 	if err != nil {
 		log.Fatalf(colorRed+"Erro ao fazer login no Green365: %v"+colorReset, err)
 	}
 	log.Println(colorGreen + "Login no Green365 efetuado com sucesso!" + colorReset)
 
-	tBot := telegram.NewBot(telegramToken, telegramChatID)
+	tBot := telegram.NewBot(config.App.TelegramBotToken, config.App.TelegramChatID)
 	trk := tracker.NewTracker()
 
-	bolsaToken := os.Getenv("BOLSADEAPOSTA_TOKEN")
+	bolsaToken := config.App.BolsaDeApostaToken
 	var bValidator *validator.BolsaValidator
 	if bolsaToken != "" {
 		bValidator = validator.NewBolsaValidator(bolsaToken)
@@ -126,7 +114,7 @@ func main() {
 		if err != nil {
 			if err.Error() == "unauthorized" {
 				log.Println(colorYellow + "Token expirado, refazendo login..." + colorReset)
-				if err := gClient.Login(email, password); err != nil {
+				if err := gClient.Login(config.App.Green365Email, config.App.Green365Password); err != nil {
 					log.Printf(colorRed+"Erro ao refazer login: %v"+colorReset, err)
 				}
 			} else {
