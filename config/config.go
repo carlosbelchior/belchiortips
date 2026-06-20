@@ -1,0 +1,57 @@
+package config
+
+import (
+	"os"
+	"strconv"
+
+	"github.com/joho/godotenv"
+)
+
+type Configuration struct {
+	Green365Email       string
+	Green365Password    string
+	Green365BotID       int
+	TelegramBotToken    string
+	TelegramChatID      string
+	BolsaDeApostaToken  string
+	BolsaDeApostaCookie string
+}
+
+var App *Configuration
+
+func getEnv(key, fallback string) string {
+	if value, ok := os.LookupEnv(key); ok {
+		return value
+	}
+	return fallback
+}
+
+func getEnvInt(key string, fallback int) int {
+	if value, ok := os.LookupEnv(key); ok {
+		if i, err := strconv.Atoi(value); err == nil {
+			return i
+		}
+	}
+	return fallback
+}
+
+// Load lê o arquivo .env e preenche as configurações com valores padrão (fallbacks)
+func Load() {
+	// Tenta carregar o .env. Se não achar, não tem problema, usará as vars de ambiente do sistema ou o fallback
+	_ = godotenv.Load()
+
+	App = &Configuration{
+		// Green365
+		Green365Email:    getEnv("GREEN365_EMAIL", "carlosbelchiorsilva@gmail.com"),
+		Green365Password: getEnv("GREEN365_PASSWORD", "Cadu@0306"),
+		Green365BotID:    getEnvInt("BOT_ID", 39001),
+
+		// Telegram
+		TelegramBotToken: getEnv("TELEGRAM_BOT_TOKEN", "8566402806:AAHU7ARkcY1LSU494y7ZzPoWQ9ernX0b-TY"),
+		TelegramChatID:   getEnv("TELEGRAM_CHAT_ID", "-1002043756516"),
+
+		// Bolsa de Aposta
+		BolsaDeApostaToken:  getEnv("BOLSADEAPOSTA_TOKEN", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJsYW5ndWFnZUNvZGUiOiJici1wdCIsImJldHRpbmdWaWV3IjoiRXVyb3BlYW4gVmlldyIsInNvcnRpbmdUeXBlSWQiOjAsImJldHRpbmdMYXlvdXQiOjEsImN1c3RvbWVyVHlwZSI6InJlYWwiLCJkaXNwbGF5VHlwZUlkIjoxLCJ0aW1lem9uZUlkIjoxMCwib2Rkc1N0eWxlSWQiOiIxIiwiYWxsb3dDaGFuZ2VPZGQiOjIsImludFRhYkV4cGFuZGVkIjoxLCJhdXRvVGltZVpvbmUiOjAsImxhc3RJbnB1dFN0YWtlIjoiMTAiLCJiYWxhbmNlUHJpb3JpdHkiOjEsImNvdW50cnlDb2RlIjoiQlIiLCJjdXJyZW5jeVJhdGUiOjAuMTQ2MjAwMTAzNzg0NDc0LCJjdXJyZW5jeVJhdGVldXIiOjAuMTY4NDQ0MjE2NDM2MjM0LCJjdXN0b21lcklkIjoxOTA2MzU1ODksImV1T2Rkc0lkIjoiMSIsImtvcmVhbk9kZHNJZCI6IjEiLCJhc2lhbk9kZHNJZCI6IjEiLCJvcGVyYXRvclRva2VuIjoiX2t6S2ZMaUZoTXRtT19tRmE4RWxnSXVQbTd4TjBMWFdwU2FXRWVvUVpvd29adE1EWExyQlNBOGJmR2pmd2s5SHliTGVOTUFhemRHQmVUMjNWbTRZT0tIeEtRIiwiYmFsYW5jZSI6MzE4LjIxLCJ0ZXN0Q3VzdG9tZXIiOjAsImN1c3RvbWVyTG9naW4iOiJjYXJsb3NiZWxjaGlvciIsImN1cnJlbmN5Q29kZSI6IkJSTCIsInN0YXRlQ29kZSI6IiIsImN1c3RvbWVyTGV2ZWwiOjAsImFnZW50SUQiOjE3NjE2NjAwMCwiZG9tYWluSUQiOjQzMDAsInNpdGVJZCI6MjA0NTQsImV4dEN1c3RvbWVySWQiOiJCT0xTQURFQVBPU1RBX2Nhcmxvc2JlbGNoaW9yIiwiZXh0U2Vzc2lvbklkIjoiNTI1NDM5MzIiLCJsZXZlbCI6MSwiRVBPRW5hYmxlZCI6dHJ1ZSwiaGFzUGxhY2VkQmV0cyI6dHJ1ZSwiaWF0IjoxNzgxMjE3NjM2LCJib251c0JhbGFuY2UiOjAsInNlbGVjdGVkT3B0aW9uSWQiOjB9.Bb-2U2II_Gq4ax5X21hwQpWgOFVtHAQhGAjAjrNb3fY"),
+		BolsaDeApostaCookie: getEnv("BOLSADEAPOSTA_COOKIE", "events_updates=313930363335353839; authorization=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJsYW5ndWFnZUNvZGUiOiJici1wdCIsImJldHRpbmdWaWV3IjoiRXVyb3BlYW4gVmlldyIsInNvcnRpbmdUeXBlSWQiOjAsImJldHRpbmdMYXlvdXQiOjEsImN1c3RvbWVyVHlwZSI6InJlYWwiLCJkaXNwbGF5VHlwZUlkIjoxLCJ0aW1lem9uZUlkIjoxMCwib2Rkc1N0eWxlSWQiOiIxIiwiYWxsb3dDaGFuZ2VPZGQiOjIsImludFRhYkV4cGFuZGVkIjoxLCJhdXRvVGltZVpvbmUiOjAsImxhc3RJbnB1dFN0YWtlIjoiMTAiLCJiYWxhbmNlUHJpb3JpdHkiOjEsImNvdW50cnlDb2RlIjoiQlIiLCJjdXJyZW5jeVJhdGUiOjAuMTQ2MjAwMTAzNzg0NDc0LCJjdXJyZW5jeVJhdGVldXIiOjAuMTY4NDQ0MjE2NDM2MjM0LCJjdXN0b21lcklkIjoxOTA2MzU1ODksImV1T2Rkc0lkIjoiMSIsImtvcmVhbk9kZHNJZCI6IjEiLCJhc2lhbk9kZHNJZCI6IjEiLCJvcGVyYXRvclRva2VuIjoiX2t6S2ZMaUZoTXRtT19tRmE4RWxnSXVQbTd4TjBMWFdwU2FXRWVvUVpvd29adE1EWExyQlNBOGJmR2pmd2s5SHliTGVOTUFhemRHQmVUMjNWbTRZT0tIeEtRIiwiYmFsYW5jZSI6MzE4LjIxLCJ0ZXN0Q3VzdG9tZXIiOjAsImN1c3RvbWVyTG9naW4iOiJjYXJsb3NiZWxjaGlvciIsImN1cnJlbmN5Q29kZSI6IkJSTCIsInN0YXRlQ29kZSI6IiIsImN1c3RvbWVyTGV2ZWwiOjAsImFnZW50SUQiOjE3NjE2NjAwMCwiZG9tYWluSUQiOjQzMDAsInNpdGVJZCI6MjA0NTQsImV4dEN1c3RvbWVySWQiOiJCT0xTQURFQVBPU1RBX2Nhcmxvc2JlbGNoaW9yIiwiZXh0U2Vzc2lvbklkIjoiNTI1NDM5MzIiLCJsZXZlbCI6MSwiRVBPRW5hYmxlZCI6dHJ1ZSwiaGFzUGxhY2VkQmV0cyI6dHJ1ZSwiaWF0IjoxNzgxMjE3NjM2LCJib251c0JhbGFuY2UiOjAsInNlbGVjdGVkT3B0aW9uSWQiOjB9.Bb-2U2II_Gq4ax5X21hwQpWgOFVtHAQhGAjAjrNb3fY; session=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJjdXN0b21lcklkIjoxOTA2MzU1ODksImV4cGlyZWREYXRlIjoxNzgxOTYxMzQxNTk5LCJjdXN0b21lcklwIjoiNDUuNS4xNDEuMTMzIiwiaWF0IjoxNzgxODc0OTQxfQ.lIK_DeENfDAe4ZBCZ6YhKeINn6OoB3OzI9gwFxIb9do; operatorToken=_kzKfLiFhMtmO_mFa8ElgIuPm7xN0LXWpSaWEeoQZowoZtMDXLrBSA8bfGjfwk9HybLeNMAazdGBeT23Vm4YOKHxKQ"),
+	}
+}

@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/carlosbelchior/green365-telegram/config"
 )
 
 type BolsaValidator struct {
@@ -47,7 +48,7 @@ func (v *BolsaValidator) CheckGameExists(home, away string) (bool, int, error) {
 	req.Header.Set("Content-Type", "application/json")
 	
 	// A API aparentemente exige que o token também seja passado no Cookie
-	cookie := os.Getenv("BOLSADEAPOSTA_COOKIE")
+	cookie := config.App.BolsaDeApostaCookie
 	if cookie != "" {
 		req.Header.Set("Cookie", cookie)
 	} else {
