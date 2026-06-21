@@ -8,6 +8,7 @@ import (
 
 	"github.com/carlosbelchior/green365-telegram/config"
 	"github.com/carlosbelchior/green365-telegram/green365"
+	"github.com/carlosbelchior/green365-telegram/report"
 	"github.com/carlosbelchior/green365-telegram/telegram"
 	"github.com/carlosbelchior/green365-telegram/tracker"
 	"github.com/carlosbelchior/green365-telegram/validator"
@@ -73,6 +74,45 @@ func sendTip(opp green365.Opportunity, targetStatus string, tBot *telegram.Bot, 
 	}
 }
 
+func startDailyReportCron(tBot *telegram.Bot) {
+	go func() {
+		for {
+			now := time.Now()
+			next := time.Date(now.Year(), now.Month(), now.Day(), 23, 0, 0, 0, now.Location())
+			if now.After(next) {
+				next = next.Add(24 * time.Hour)
+			}
+			waitDuration := next.Sub(now)
+			log.Printf(colorCyan+"[Cron] Relatório diário agendado para rodar em %v"+colorReset, waitDuration.Round(time.Minute))
+			
+			time.Sleep(waitDuration)
+
+			summary := report.GetSummary(time.Now())
+			if summary.TotalTips > 0 {
+				msg := fmt.Sprintf("📊 *Fechamento do Dia (%s)*\n\n", summary.Date)
+				msg += fmt.Sprintf("🎯 Total de Entradas: %d\n", summary.TotalTips)
+				msg += fmt.Sprintf("✅ Greens: %d\n", summary.TotalWins)
+				msg += fmt.Sprintf("❌ Reds: %d\n", summary.TotalLosses)
+				
+				if summary.TotalProfit >= 0 {
+					msg += fmt.Sprintf("\n💰 Lucro: +%.2fu 🚀\n", summary.TotalProfit)
+				} else {
+					msg += fmt.Sprintf("\n📉 Prejuízo: %.2fu ⚠️\n", summary.TotalProfit)
+				}
+				
+				err := tBot.SendTextMessage(msg)
+				if err != nil {
+					log.Printf(colorRed+"Erro ao enviar relatório diário: %v"+colorReset, err)
+				} else {
+					log.Println(colorGreen + "Relatório diário enviado com sucesso!" + colorReset)
+				}
+			}
+			
+			time.Sleep(time.Minute)
+		}
+	}()
+}
+
 func main() {
 	// Custom log format
 	log.SetFlags(0)
@@ -98,6 +138,8 @@ func main() {
 
 	tBot := telegram.NewBot(config.App.TelegramBotToken, config.App.TelegramChatID)
 	trk := tracker.NewTracker()
+
+	startDailyReportCron(tBot)
 
 	bolsaToken := config.App.BolsaDeApostaToken
 	var bValidator *validator.BolsaValidator
@@ -150,6 +192,11 @@ func main() {
 				if currentCombinedStatus != lastCombinedStatus {
 					// Status mudou
 					log.Printf(colorCyan+"Atualizando entrada %d"+colorReset, opp.ID)
+
+					if opp.Status == "finished" && opp.ResultStatus != nil {
+						report.SaveResult(opp)
+					}
+
 					if msgID != 0 {
 						err := tBot.EditMessage(msgID, opp)
 						if err != nil {
