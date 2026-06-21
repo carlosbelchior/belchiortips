@@ -175,3 +175,31 @@ func (b *Bot) EditMessage(messageID int, opp green365.Opportunity) error {
 
 	return nil
 }
+
+func (b *Bot) SendTextMessage(text string) error {
+	url := fmt.Sprintf(telegramAPI+"/sendMessage", b.Token)
+
+	reqBody := sendMessageRequest{
+		ChatID:    b.ChatID,
+		Text:      text,
+		ParseMode: "Markdown",
+	}
+
+	bodyData, _ := json.Marshal(reqBody)
+	resp, err := b.HTTPClient.Post(url, "application/json", bytes.NewBuffer(bodyData))
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	var tResp telegramResponse
+	if err := json.NewDecoder(resp.Body).Decode(&tResp); err != nil {
+		return err
+	}
+
+	if !tResp.Ok {
+		return fmt.Errorf("erro no telegram: %s", tResp.Description)
+	}
+
+	return nil
+}
