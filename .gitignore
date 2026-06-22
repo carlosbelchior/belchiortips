@@ -1,5 +1,7 @@
 .idea/
 .env
+.DS_Store
 tracker_data.json
+reports/
 *.exe
 *.o
