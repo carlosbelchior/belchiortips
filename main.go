@@ -113,6 +113,55 @@ func startDailyReportCron(tBot *telegram.Bot) {
 	}()
 }
 
+func startMonthlyReportCron(tBot *telegram.Bot) {
+	go func() {
+		for {
+			now := time.Now()
+			
+			// time.Date com dia 0 retorna o último dia do mês anterior.
+			// Usamos (now.Month() + 1) e dia 0 para o último dia deste mês.
+			lastDayOfMonth := time.Date(now.Year(), now.Month()+1, 0, 23, 30, 0, 0, now.Location())
+			
+			if now.After(lastDayOfMonth) {
+				lastDayOfMonth = time.Date(now.Year(), now.Month()+2, 0, 23, 30, 0, 0, now.Location())
+			}
+			
+			waitDuration := lastDayOfMonth.Sub(now)
+			log.Printf(colorCyan+"[Cron] Relatório mensal agendado para rodar em %v"+colorReset, waitDuration.Round(time.Hour))
+			
+			time.Sleep(waitDuration)
+
+			finishedMonth := lastDayOfMonth.Month()
+			finishedYear := lastDayOfMonth.Year()
+			
+			summary := report.GetMonthlySummary(finishedYear, finishedMonth)
+			if summary.TotalTips > 0 {
+				msg := fmt.Sprintf("📅 *FECHAMENTO MENSAL (%s)* 📅\n\n", summary.Month)
+				msg += fmt.Sprintf("🎯 Total de Entradas: %d\n", summary.TotalTips)
+				msg += fmt.Sprintf("✅ Greens: %d\n", summary.TotalWins)
+				msg += fmt.Sprintf("❌ Reds: %d\n", summary.TotalLosses)
+				msg += fmt.Sprintf("🔥 Maior sequência de Greens: %d\n", summary.MaxWinStreak)
+				msg += fmt.Sprintf("🧊 Maior sequência de Reds: %d\n", summary.MaxLoseStreak)
+				
+				if summary.TotalProfit >= 0 {
+					msg += fmt.Sprintf("\n💰 Lucro Final: +%.2fu 🚀\n", summary.TotalProfit)
+				} else {
+					msg += fmt.Sprintf("\n📉 Prejuízo Final: %.2fu ⚠️\n", summary.TotalProfit)
+				}
+				
+				err := tBot.SendTextMessage(msg)
+				if err != nil {
+					log.Printf(colorRed+"Erro ao enviar relatório mensal: %v"+colorReset, err)
+				} else {
+					log.Println(colorGreen + "Relatório mensal enviado com sucesso!" + colorReset)
+				}
+			}
+			
+			time.Sleep(time.Hour)
+		}
+	}()
+}
+
 func main() {
 	// Custom log format
 	log.SetFlags(0)
@@ -140,6 +189,7 @@ func main() {
 	trk := tracker.NewTracker()
 
 	startDailyReportCron(tBot)
+	startMonthlyReportCron(tBot)
 
 	bolsaToken := config.App.BolsaDeApostaToken
 	var bValidator *validator.BolsaValidator
@@ -193,14 +243,14 @@ func main() {
 					// Status mudou
 					log.Printf(colorCyan+"Atualizando entrada %d"+colorReset, opp.ID)
 
-					if opp.Status == "finished" && opp.ResultStatus != nil {
-						report.SaveResult(opp)
-					}
-
 					if msgID != 0 {
 						err := tBot.EditMessage(msgID, opp)
 						if err != nil {
-							log.Println(colorYellow + "Mensagem do Telegram não encontrada. Ignorando..." + colorReset)
+							log.Println(colorYellow + "Mensagem do Telegram não encontrada (talvez apagada). Ignorando relatório..." + colorReset)
+						} else {
+							if opp.Status == "finished" && opp.ResultStatus != nil {
+								report.SaveResult(opp)
+							}
 						}
 						trk.UpdateStatus(opp.ID, currentCombinedStatus)
 					} else {

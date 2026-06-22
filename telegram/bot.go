@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/carlosbelchior/green365-telegram/config"
 	"github.com/carlosbelchior/green365-telegram/green365"
 )
 
@@ -77,7 +78,7 @@ func getFlag(teamName string) string {
 
 func FormatMessage(opp green365.Opportunity) string {
 	text := fmt.Sprintf("🔵 Ao vivo\n\n")
-	text += fmt.Sprintf("📈 *%s - @%.2f*\n\n", opp.TargetLine.Name, opp.TargetLine.Odd)
+	text += fmt.Sprintf("📈 *%s - @%.2f*\n\n", opp.TargetLine.Name, config.App.MinOdd)
 	
 	homeStr := getFlag(opp.Home)
 	awayStr := getFlag(opp.Away)
@@ -86,17 +87,11 @@ func FormatMessage(opp green365.Opportunity) string {
 
 	if opp.Status == "finished" && opp.ResultStatus != nil {
 		if *opp.ResultStatus == "win" {
-			unit := 0.0
-			if opp.Unit != nil {
-				unit = *opp.Unit
-			}
-			text += fmt.Sprintf("🏆 Resultado: +%.2fu ✅\n\n", unit)
+			profit := config.App.MinOdd - 1.0
+			text += fmt.Sprintf("🏆 Resultado: +%.2fu ✅\n\n", profit)
 		} else if *opp.ResultStatus == "lose" {
-			unit := 0.0
-			if opp.Unit != nil {
-				unit = *opp.Unit
-			}
-			text += fmt.Sprintf("❌ Resultado: %.2fu\n\n", unit)
+			loss := -1.0
+			text += fmt.Sprintf("❌ Resultado: %.2fu\n\n", loss)
 		}
 	}
 
