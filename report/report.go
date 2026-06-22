@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/carlosbelchior/green365-telegram/config"
 	"github.com/carlosbelchior/green365-telegram/green365"
 )
 
@@ -33,6 +34,16 @@ type DailySummary struct {
 	TotalWins   int     `json:"totalWins"`
 	TotalLosses int     `json:"totalLosses"`
 	TotalProfit float64 `json:"totalProfit"`
+}
+
+type MonthlySummary struct {
+	Month         string  `json:"month"`
+	TotalTips     int     `json:"totalTips"`
+	TotalWins     int     `json:"totalWins"`
+	TotalLosses   int     `json:"totalLosses"`
+	TotalProfit   float64 `json:"totalProfit"`
+	MaxWinStreak  int     `json:"maxWinStreak"`
+	MaxLoseStreak int     `json:"maxLoseStreak"`
 }
 
 func init() {
@@ -62,15 +73,10 @@ func SaveResult(opp green365.Opportunity) {
 	}
 
 	unit := 0.0
-	if opp.Unit != nil {
-		unit = *opp.Unit
-	}
-	
-	// Tratar valor da unidade
-	// O retorno da API para "lose" vem como positivo ou negativo?
-	// Geralmente Green365 retorna "lose" com Unit = 1 e a gente precisa garantir que é negativo pro calculo
-	if *opp.ResultStatus == "lose" && unit > 0 {
-		unit = -unit
+	if *opp.ResultStatus == "win" {
+		unit = config.App.MinOdd - 1.0
+	} else if *opp.ResultStatus == "lose" {
+		unit = -1.0
 	}
 
 	entry := ReportEntry{
@@ -123,6 +129,60 @@ func GetSummary(date time.Time) DailySummary {
 			summary.TotalWins++
 		} else if e.Result == "lose" {
 			summary.TotalLosses++
+		}
+		summary.TotalProfit += e.Unit
+	}
+
+	return summary
+}
+
+// GetMonthlySummary lê todos os relatórios do mês especificado e calcula o fechamento com sequências
+func GetMonthlySummary(year int, month time.Month) MonthlySummary {
+	mu.Lock()
+	defer mu.Unlock()
+
+	summary := MonthlySummary{
+		Month: fmt.Sprintf("%02d/%d", month, year),
+	}
+
+	var allEntries []ReportEntry
+
+	// Loop por todos os dias do mês
+	for day := 1; day <= 31; day++ {
+		date := time.Date(year, month, day, 0, 0, 0, 0, time.UTC)
+		if date.Month() != month {
+			break // Passou do último dia do mês
+		}
+
+		filename := getFileName(date)
+		data, err := os.ReadFile(filename)
+		if err == nil {
+			var dailyEntries []ReportEntry
+			if json.Unmarshal(data, &dailyEntries) == nil {
+				allEntries = append(allEntries, dailyEntries...)
+			}
+		}
+	}
+
+	currentWinStreak := 0
+	currentLoseStreak := 0
+
+	for _, e := range allEntries {
+		summary.TotalTips++
+		if e.Result == "win" {
+			summary.TotalWins++
+			currentWinStreak++
+			currentLoseStreak = 0
+			if currentWinStreak > summary.MaxWinStreak {
+				summary.MaxWinStreak = currentWinStreak
+			}
+		} else if e.Result == "lose" {
+			summary.TotalLosses++
+			currentLoseStreak++
+			currentWinStreak = 0
+			if currentLoseStreak > summary.MaxLoseStreak {
+				summary.MaxLoseStreak = currentLoseStreak
+			}
 		}
 		summary.TotalProfit += e.Unit
 	}
