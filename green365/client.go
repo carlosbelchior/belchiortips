@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"time"
 )
@@ -126,8 +125,7 @@ func (c *Client) GetOpportunities(botID int, limit int) ([]Opportunity, error) {
 	}
 	
 	if resp.StatusCode != http.StatusOK {
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("erro ao buscar oportunidades: status %d - %s", resp.StatusCode, string(bodyBytes))
+		return nil, fmt.Errorf("Codigo: %d", resp.StatusCode)
 	}
 
 	var getResp getOpportunitiesResponse

@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/joho/godotenv"
 )
@@ -10,7 +11,7 @@ import (
 type Configuration struct {
 	Green365Email       string
 	Green365Password    string
-	Green365BotID       int
+	Green365BotIDs      []int
 	TelegramBotToken    string
 	TelegramChatID      string
 	BolsaDeApostaToken  string
@@ -36,6 +37,21 @@ func getEnvInt(key string, fallback int) int {
 	return fallback
 }
 
+func getEnvIntSlice(key string, fallback []int) []int {
+	if value, ok := os.LookupEnv(key); ok {
+		var ints []int
+		for _, p := range strings.Split(value, ",") {
+			if i, err := strconv.Atoi(strings.TrimSpace(p)); err == nil {
+				ints = append(ints, i)
+			}
+		}
+		if len(ints) > 0 {
+			return ints
+		}
+	}
+	return fallback
+}
+
 func getEnvFloat(key string, fallback float64) float64 {
 	if value, ok := os.LookupEnv(key); ok {
 		if f, err := strconv.ParseFloat(value, 64); err == nil {
@@ -54,7 +70,7 @@ func Load() {
 		// Green365
 		Green365Email:    getEnv("GREEN365_EMAIL", "carlosbelchiorsilva@gmail.com"),
 		Green365Password: getEnv("GREEN365_PASSWORD", "Cadu@0306"),
-		Green365BotID:    getEnvInt("BOT_ID", 39001),
+		Green365BotIDs:   getEnvIntSlice("BOT_ID", []int{39001}),
 
 		// Telegram
 		TelegramBotToken: getEnv("TELEGRAM_BOT_TOKEN", "8566402806:AAHU7ARkcY1LSU494y7ZzPoWQ9ernX0b-TY"),

@@ -6,11 +6,13 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/carlosbelchior/green365-telegram/config"
 	"github.com/carlosbelchior/green365-telegram/green365"
+	"github.com/carlosbelchior/green365-telegram/telegram"
 )
 
 var mu sync.Mutex
@@ -18,32 +20,14 @@ var reportsDir = "reports"
 
 type ReportEntry struct {
 	OpportunityID int64     `json:"opportunityId"`
-	Home          string    `json:"home"`
-	Away          string    `json:"away"`
-	Market        string    `json:"market"`
-	TargetLine    string    `json:"targetLine"`
+	MessageID     int       `json:"messageId"`
+	MarketType    string    `json:"marketType"` // "Ambos Marcam" ou "Over/Under"
+	Result        string    `json:"result"`
+	Unit          float64   `json:"unit"`
 	Odd           float64   `json:"odd"`
-	Result        string    `json:"result"` // "win" ou "lose"
-	Unit          float64   `json:"unit"`   // Valor ganho/perdido (+0.8, -1.0)
+	URL           string    `json:"url"` // Para reconstruir o botao do telegram na validacao
+	Ignored       bool      `json:"ignored"`
 	Timestamp     time.Time `json:"timestamp"`
-}
-
-type DailySummary struct {
-	Date        string  `json:"date"`
-	TotalTips   int     `json:"totalTips"`
-	TotalWins   int     `json:"totalWins"`
-	TotalLosses int     `json:"totalLosses"`
-	TotalProfit float64 `json:"totalProfit"`
-}
-
-type MonthlySummary struct {
-	Month         string  `json:"month"`
-	TotalTips     int     `json:"totalTips"`
-	TotalWins     int     `json:"totalWins"`
-	TotalLosses   int     `json:"totalLosses"`
-	TotalProfit   float64 `json:"totalProfit"`
-	MaxWinStreak  int     `json:"maxWinStreak"`
-	MaxLoseStreak int     `json:"maxLoseStreak"`
 }
 
 func init() {
@@ -54,9 +38,18 @@ func getFileName(date time.Time) string {
 	return filepath.Join(reportsDir, fmt.Sprintf("%s.json", date.Format("2006-01-02")))
 }
 
-// SaveResult registra uma entrada finalizada no arquivo do dia atual
-func SaveResult(opp green365.Opportunity) {
-	if opp.ResultStatus == nil || (*opp.ResultStatus != "win" && *opp.ResultStatus != "lose") {
+func getMarketType(opp green365.Opportunity) string {
+	marketLower := strings.ToLower(opp.Market)
+	targetLower := strings.ToLower(opp.TargetLine.Name)
+	if targetLower == "yes" || targetLower == "no" || strings.Contains(marketLower, "both teams") || strings.Contains(marketLower, "ambos marcam") {
+		return "Ambos Marcam"
+	}
+	return "Over/Under"
+}
+
+// SaveResult registra uma entrada finalizada
+func SaveResult(opp green365.Opportunity, msgID int) {
+	if opp.ResultStatus == nil || (*opp.ResultStatus != "win" && *opp.ResultStatus != "lose" && *opp.ResultStatus != "half_win" && *opp.ResultStatus != "half_lose") {
 		return
 	}
 
@@ -77,115 +70,128 @@ func SaveResult(opp green365.Opportunity) {
 		unit = config.App.MinOdd - 1.0
 	} else if *opp.ResultStatus == "lose" {
 		unit = -1.0
+	} else if *opp.ResultStatus == "half_win" {
+		unit = 0.35
+	} else if *opp.ResultStatus == "half_lose" {
+		unit = -0.50
 	}
 
 	entry := ReportEntry{
 		OpportunityID: opp.ID,
-		Home:          opp.Home,
-		Away:          opp.Away,
-		Market:        opp.Market,
-		TargetLine:    opp.TargetLine.Name,
-		Odd:           opp.TargetLine.Odd,
+		MessageID:     msgID,
+		MarketType:    getMarketType(opp),
 		Result:        *opp.ResultStatus,
 		Unit:          unit,
+		Odd:           config.App.MinOdd,
+		URL:           opp.TargetLine.SportsBookRedirectURL,
+		Ignored:       false,
 		Timestamp:     now,
 	}
 
-	// Previne duplicação de registro
-	for _, e := range entries {
+	for i, e := range entries {
 		if e.OpportunityID == entry.OpportunityID {
-			return 
+			// Update se já existir
+			entries[i] = entry
+			newData, _ := json.MarshalIndent(entries, "", "  ")
+			_ = os.WriteFile(filename, newData, 0644)
+			return
 		}
 	}
 
 	entries = append(entries, entry)
-	
 	newData, _ := json.MarshalIndent(entries, "", "  ")
 	_ = os.WriteFile(filename, newData, 0644)
-	
 	log.Printf("\033[36mRelatório\033[0m: Entrada %d arquivada como %s", opp.ID, entry.Result)
 }
 
-// GetSummary extrai o resumo do dia especificado
-func GetSummary(date time.Time) DailySummary {
+// GenerateDailySummary processa e gera a string de resumo
+func GenerateDailySummary(tBot *telegram.Bot) string {
 	mu.Lock()
 	defer mu.Unlock()
 
-	filename := getFileName(date)
-	summary := DailySummary{
-		Date: date.Format("02/01/2006"),
-	}
+	now := time.Now()
+	filename := getFileName(now)
 
 	var entries []ReportEntry
 	data, err := os.ReadFile(filename)
 	if err != nil {
-		return summary 
+		return "" // Nenhum relatório hoje
 	}
 	_ = json.Unmarshal(data, &entries)
 
+	var modified bool
+	// Validação de mensagens do telegram
+	for i, e := range entries {
+		if !e.Ignored && e.MessageID != 0 {
+			err := tBot.VerifyMessageExists(e.MessageID, e.URL)
+			if err != nil && strings.Contains(strings.ToLower(err.Error()), "not found") {
+				entries[i].Ignored = true
+				modified = true
+				log.Printf("\033[33mRelatório\033[0m: Mensagem %d ignorada (foi deletada do Telegram).", e.MessageID)
+			}
+		}
+	}
+
+	if modified {
+		newData, _ := json.MarshalIndent(entries, "", "  ")
+		_ = os.WriteFile(filename, newData, 0644)
+	}
+
+	var totalTips, totalWins, totalLosses int
+	var totalProfit float64
+	
+	type marketStat struct {
+		wins, losses int
+		profit float64
+	}
+	stats := make(map[string]*marketStat)
+
 	for _, e := range entries {
-		summary.TotalTips++
-		if e.Result == "win" {
-			summary.TotalWins++
-		} else if e.Result == "lose" {
-			summary.TotalLosses++
+		if e.Ignored {
+			continue
 		}
-		summary.TotalProfit += e.Unit
-	}
-
-	return summary
-}
-
-// GetMonthlySummary lê todos os relatórios do mês especificado e calcula o fechamento com sequências
-func GetMonthlySummary(year int, month time.Month) MonthlySummary {
-	mu.Lock()
-	defer mu.Unlock()
-
-	summary := MonthlySummary{
-		Month: fmt.Sprintf("%02d/%d", month, year),
-	}
-
-	var allEntries []ReportEntry
-
-	// Loop por todos os dias do mês
-	for day := 1; day <= 31; day++ {
-		date := time.Date(year, month, day, 0, 0, 0, 0, time.UTC)
-		if date.Month() != month {
-			break // Passou do último dia do mês
+		
+		if _, ok := stats[e.MarketType]; !ok {
+			stats[e.MarketType] = &marketStat{}
 		}
 
-		filename := getFileName(date)
-		data, err := os.ReadFile(filename)
-		if err == nil {
-			var dailyEntries []ReportEntry
-			if json.Unmarshal(data, &dailyEntries) == nil {
-				allEntries = append(allEntries, dailyEntries...)
+		totalTips++
+		if e.Result == "win" || e.Result == "half_win" {
+			totalWins++
+			stats[e.MarketType].wins++
+		} else if e.Result == "lose" || e.Result == "half_lose" {
+			totalLosses++
+			stats[e.MarketType].losses++
+		}
+		totalProfit += e.Unit
+		stats[e.MarketType].profit += e.Unit
+	}
+
+	if totalTips == 0 {
+		return ""
+	}
+
+	msg := fmt.Sprintf("📊 *Fechamento do Dia (%s)*\n\n", now.Format("02/01/2006"))
+	msg += fmt.Sprintf("🎯 Total de Entradas: %d\n\n", totalTips)
+	msg += fmt.Sprintf("✅ Greens: %d\n\n", totalWins)
+	msg += fmt.Sprintf("❌ Reds: %d\n\n", totalLosses)
+	
+	if totalProfit >= 0 {
+		msg += fmt.Sprintf("\n💰 Lucro: +%.2fu 🚀\n\n", totalProfit)
+	} else {
+		msg += fmt.Sprintf("\n📉 Prejuízo: %.2fu ⚠️\n\n", totalProfit)
+	}
+
+	msg += "🔍 *Por Mercado:*\n"
+	for mk, st := range stats {
+		if st.wins+st.losses > 0 {
+			sign := ""
+			if st.profit > 0 {
+				sign = "+"
 			}
+			msg += fmt.Sprintf("• %s: %d✅ %d❌ (%s%.2fu)\n\n", mk, st.wins, st.losses, sign, st.profit)
 		}
 	}
 
-	currentWinStreak := 0
-	currentLoseStreak := 0
-
-	for _, e := range allEntries {
-		summary.TotalTips++
-		if e.Result == "win" {
-			summary.TotalWins++
-			currentWinStreak++
-			currentLoseStreak = 0
-			if currentWinStreak > summary.MaxWinStreak {
-				summary.MaxWinStreak = currentWinStreak
-			}
-		} else if e.Result == "lose" {
-			summary.TotalLosses++
-			currentLoseStreak++
-			currentWinStreak = 0
-			if currentLoseStreak > summary.MaxLoseStreak {
-				summary.MaxLoseStreak = currentLoseStreak
-			}
-		}
-		summary.TotalProfit += e.Unit
-	}
-
-	return summary
+	return msg
 }

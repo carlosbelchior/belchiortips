@@ -87,77 +87,19 @@ func startDailyReportCron(tBot *telegram.Bot) {
 			
 			time.Sleep(waitDuration)
 
-			summary := report.GetSummary(time.Now())
-			if summary.TotalTips > 0 {
-				msg := fmt.Sprintf("📊 *Fechamento do Dia (%s)*\n\n", summary.Date)
-				msg += fmt.Sprintf("🎯 Total de Entradas: %d\n", summary.TotalTips)
-				msg += fmt.Sprintf("✅ Greens: %d\n", summary.TotalWins)
-				msg += fmt.Sprintf("❌ Reds: %d\n", summary.TotalLosses)
-				
-				if summary.TotalProfit >= 0 {
-					msg += fmt.Sprintf("\n💰 Lucro: +%.2fu 🚀\n", summary.TotalProfit)
-				} else {
-					msg += fmt.Sprintf("\n📉 Prejuízo: %.2fu ⚠️\n", summary.TotalProfit)
-				}
-				
+			msg := report.GenerateDailySummary(tBot)
+			if msg != "" {
 				err := tBot.SendTextMessage(msg)
 				if err != nil {
 					log.Printf(colorRed+"Erro ao enviar relatório diário: %v"+colorReset, err)
 				} else {
 					log.Println(colorGreen + "Relatório diário enviado com sucesso!" + colorReset)
 				}
+			} else {
+				log.Println(colorYellow + "Sem relatório diário para enviar (zero entradas válidas)." + colorReset)
 			}
 			
 			time.Sleep(time.Minute)
-		}
-	}()
-}
-
-func startMonthlyReportCron(tBot *telegram.Bot) {
-	go func() {
-		for {
-			now := time.Now()
-			
-			// time.Date com dia 0 retorna o último dia do mês anterior.
-			// Usamos (now.Month() + 1) e dia 0 para o último dia deste mês.
-			lastDayOfMonth := time.Date(now.Year(), now.Month()+1, 0, 23, 30, 0, 0, now.Location())
-			
-			if now.After(lastDayOfMonth) {
-				lastDayOfMonth = time.Date(now.Year(), now.Month()+2, 0, 23, 30, 0, 0, now.Location())
-			}
-			
-			waitDuration := lastDayOfMonth.Sub(now)
-			log.Printf(colorCyan+"[Cron] Relatório mensal agendado para rodar em %v"+colorReset, waitDuration.Round(time.Hour))
-			
-			time.Sleep(waitDuration)
-
-			finishedMonth := lastDayOfMonth.Month()
-			finishedYear := lastDayOfMonth.Year()
-			
-			summary := report.GetMonthlySummary(finishedYear, finishedMonth)
-			if summary.TotalTips > 0 {
-				msg := fmt.Sprintf("📅 *FECHAMENTO MENSAL (%s)* 📅\n\n", summary.Month)
-				msg += fmt.Sprintf("🎯 Total de Entradas: %d\n", summary.TotalTips)
-				msg += fmt.Sprintf("✅ Greens: %d\n", summary.TotalWins)
-				msg += fmt.Sprintf("❌ Reds: %d\n", summary.TotalLosses)
-				msg += fmt.Sprintf("🔥 Maior sequência de Greens: %d\n", summary.MaxWinStreak)
-				msg += fmt.Sprintf("🧊 Maior sequência de Reds: %d\n", summary.MaxLoseStreak)
-				
-				if summary.TotalProfit >= 0 {
-					msg += fmt.Sprintf("\n💰 Lucro Final: +%.2fu 🚀\n", summary.TotalProfit)
-				} else {
-					msg += fmt.Sprintf("\n📉 Prejuízo Final: %.2fu ⚠️\n", summary.TotalProfit)
-				}
-				
-				err := tBot.SendTextMessage(msg)
-				if err != nil {
-					log.Printf(colorRed+"Erro ao enviar relatório mensal: %v"+colorReset, err)
-				} else {
-					log.Println(colorGreen + "Relatório mensal enviado com sucesso!" + colorReset)
-				}
-			}
-			
-			time.Sleep(time.Hour)
 		}
 	}()
 }
@@ -174,7 +116,7 @@ func main() {
 		log.Fatal(colorRed + "Variáveis de ambiente incompletas (GREEN365_EMAIL, GREEN365_PASSWORD, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID)" + colorReset)
 	}
 
-	botID := config.App.Green365BotID
+	botIDs := config.App.Green365BotIDs
 
 	log.Println(colorCyan + "Iniciando bot..." + colorReset)
 
@@ -189,7 +131,6 @@ func main() {
 	trk := tracker.NewTracker()
 
 	startDailyReportCron(tBot)
-	startMonthlyReportCron(tBot)
 
 	bolsaToken := config.App.BolsaDeApostaToken
 	var bValidator *validator.BolsaValidator
@@ -202,21 +143,32 @@ func main() {
 
 	for {
 		log.Println("Buscando novas entradas...")
-		opps, err := gClient.GetOpportunities(botID, 10)
-		if err != nil {
-			if err.Error() == "unauthorized" {
+		var allOpps []green365.Opportunity
+		var fetchErr error
+
+		for _, bID := range botIDs {
+			opps, err := gClient.GetOpportunities(bID, 10)
+			if err != nil {
+				fetchErr = err
+				break
+			}
+			allOpps = append(allOpps, opps...)
+		}
+
+		if fetchErr != nil {
+			if fetchErr.Error() == "unauthorized" {
 				log.Println(colorYellow + "Token expirado, refazendo login..." + colorReset)
 				if err := gClient.Login(config.App.Green365Email, config.App.Green365Password); err != nil {
 					log.Printf(colorRed+"Erro ao refazer login: %v"+colorReset, err)
 				}
 			} else {
-				log.Printf(colorRed+"Erro ao buscar oportunidades: %v"+colorReset, err)
+				log.Printf(colorRed+"Erro ao buscar oportunidades. %v"+colorReset, fetchErr)
 			}
 			time.Sleep(5 * time.Second)
 			continue
 		}
 
-		for _, opp := range opps {
+		for _, opp := range allOpps {
 			msgID, exists := trk.GetMessageID(opp.ID)
 			currentCombinedStatus := getCombinedStatus(opp)
 
@@ -249,7 +201,7 @@ func main() {
 							log.Println(colorYellow + "Mensagem do Telegram não encontrada (talvez apagada). Ignorando relatório..." + colorReset)
 						} else {
 							if opp.Status == "finished" && opp.ResultStatus != nil {
-								report.SaveResult(opp)
+								report.SaveResult(opp, msgID)
 							}
 						}
 						trk.UpdateStatus(opp.ID, currentCombinedStatus)

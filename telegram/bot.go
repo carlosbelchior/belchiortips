@@ -78,7 +78,16 @@ func getFlag(teamName string) string {
 
 func FormatMessage(opp green365.Opportunity) string {
 	text := fmt.Sprintf("🔵 Ao vivo\n\n")
-	text += fmt.Sprintf("📈 *%s - @%.2f*\n\n", opp.TargetLine.Name, config.App.MinOdd)
+	
+	targetName := opp.TargetLine.Name
+	// Tradução para Ambos Marcam
+	if strings.ToLower(targetName) == "yes" {
+		targetName = "Ambos Marcam SIM"
+	} else if strings.ToLower(targetName) == "no" {
+		targetName = "Ambos Marcam NÃO"
+	}
+	
+	text += fmt.Sprintf("📈 *%s - @%.2f*\n\n", targetName, config.App.MinOdd)
 	
 	homeStr := getFlag(opp.Home)
 	awayStr := getFlag(opp.Away)
@@ -92,6 +101,10 @@ func FormatMessage(opp green365.Opportunity) string {
 		} else if *opp.ResultStatus == "lose" {
 			loss := -1.0
 			text += fmt.Sprintf("❌ Resultado: %.2fu\n\n", loss)
+		} else if *opp.ResultStatus == "half_win" {
+			text += fmt.Sprintf("🏆 Resultado: +0.35u (Meio Green) ✅\n\n")
+		} else if *opp.ResultStatus == "half_lose" {
+			text += fmt.Sprintf("❌ Resultado: -0.50u (Meio Red)\n\n")
 		}
 	}
 
@@ -182,6 +195,43 @@ func (b *Bot) SendTextMessage(text string) error {
 
 	bodyData, _ := json.Marshal(reqBody)
 	resp, err := b.HTTPClient.Post(url, "application/json", bytes.NewBuffer(bodyData))
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	var tResp telegramResponse
+	if err := json.NewDecoder(resp.Body).Decode(&tResp); err != nil {
+		return err
+	}
+
+	if !tResp.Ok {
+		return fmt.Errorf("erro no telegram: %s", tResp.Description)
+	}
+
+	return nil
+}
+
+type editMarkupRequest struct {
+	ChatID      string               `json:"chat_id"`
+	MessageID   int                  `json:"message_id"`
+	ReplyMarkup *InlineKeyboardMarkup `json:"reply_markup,omitempty"`
+}
+
+// VerifyMessageExists attempts to edit the reply markup to the same value.
+// If the message is deleted, Telegram returns a "message to edit not found" error.
+// If it exists, it returns "message is not modified" (or succeeds).
+func (b *Bot) VerifyMessageExists(messageID int, url string) error {
+	apiURL := fmt.Sprintf(telegramAPI+"/editMessageReplyMarkup", b.Token)
+
+	reqBody := editMarkupRequest{
+		ChatID:      b.ChatID,
+		MessageID:   messageID,
+		ReplyMarkup: b.getReplyMarkup(url),
+	}
+
+	bodyData, _ := json.Marshal(reqBody)
+	resp, err := b.HTTPClient.Post(apiURL, "application/json", bytes.NewBuffer(bodyData))
 	if err != nil {
 		return err
 	}
