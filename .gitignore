@@ -4,4 +4,5 @@
 tracker_data.json
 reports/
 *.exe
-*.otest_build
+*.o
+test_build

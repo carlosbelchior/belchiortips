@@ -80,11 +80,15 @@ func FormatMessage(opp green365.Opportunity) string {
 	text := fmt.Sprintf("🔵 Ao vivo\n\n")
 	
 	targetName := opp.TargetLine.Name
-	// Tradução para Ambos Marcam
+	// Tradução para Ambos Marcam ou adição de HT no Over/Under
 	if strings.ToLower(targetName) == "yes" {
 		targetName = "Ambos Marcam SIM"
 	} else if strings.ToLower(targetName) == "no" {
 		targetName = "Ambos Marcam NÃO"
+	} else if strings.Contains(strings.ToLower(targetName), "over") || strings.Contains(strings.ToLower(targetName), "under") {
+		if !strings.HasSuffix(strings.ToUpper(targetName), " HT") {
+			targetName += " HT"
+		}
 	}
 	
 	text += fmt.Sprintf("📈 *%s - @%.2f*\n\n", targetName, config.App.MinOdd)
