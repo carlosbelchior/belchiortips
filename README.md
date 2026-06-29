@@ -12,7 +12,7 @@ Este é um bot automatizado desenvolvido em Go (Golang) para o Telegram. Sua fun
   - Soma as Tips, Greens, Reds e o Saldo (Lucro/Prejuízo).
   - Separa as estatísticas pelos mercados, como **Ambos Marcam** e **Over/Under**.
   - Envia o relatório detalhado no próprio Telegram.
-- **Tratamento Inteligente de Mercado:** Consegue ler parâmetros técnicos ("Yes"/"No") da API e traduzi-los para o público final (ex: "Ambos Marcam SIM", "Ambos Marcam NÃO").
+- **Tratamento Inteligente de Mercado:** Consegue ler parâmetros técnicos ("Yes"/"No") da API e traduzi-los para o público final (ex: "Ambos Marcam SIM", "Ambos Marcam NÃO"). Além disso, adiciona automaticamente o sufixo " HT" (Half Time) aos mercados de Gols (Over/Under) quando apropriado.
 
 ## ⚙️ Configuração (.env)
 
